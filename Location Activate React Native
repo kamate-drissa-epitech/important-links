@@ -1,0 +1,128 @@
+// LocationEnabler
+
+package com.cofilocapp.location
+
+import android.app.Activity
+import android.content.Intent
+import com.facebook.react.bridge.*
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.*
+import com.facebook.react.bridge.ActivityEventListener
+
+class LocationEnablerModule(
+    private val reactContext: ReactApplicationContext
+) : ReactContextBaseJavaModule(reactContext), ActivityEventListener {
+
+    private var promise: Promise? = null
+
+    init {
+        reactContext.addActivityEventListener(this)
+    }
+
+    override fun getName() = "LocationEnabler"
+
+    @ReactMethod
+    fun isLocationEnabled(promise: Promise) {
+        val activity = reactContext.currentActivity
+        if (activity == null) {
+            promise.reject("NO_ACTIVITY", "No activity")
+            return
+        }
+
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY, 10000
+        ).build()
+
+        val builder = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+
+        val client = LocationServices.getSettingsClient(activity)
+        val task = client.checkLocationSettings(builder.build())
+
+        task.addOnSuccessListener {
+            promise.resolve(true)
+        }
+
+        task.addOnFailureListener {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun promptForEnableLocation(promise: Promise) {
+        val activity = reactContext.currentActivity
+        if (activity == null) {
+            promise.reject("NO_ACTIVITY", "No activity")
+            return
+        }
+
+        this.promise = promise
+
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY, 10000
+        ).build()
+
+        val builder = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+            .setAlwaysShow(true)
+
+        val client = LocationServices.getSettingsClient(activity)
+        val task = client.checkLocationSettings(builder.build())
+
+        task.addOnSuccessListener {
+            promise.resolve("already-enabled")
+        }
+
+        task.addOnFailureListener { ex ->
+            if (ex is ResolvableApiException) {
+                ex.startResolutionForResult(activity, REQUEST_CHECK_SETTINGS)
+            } else {
+                promise.reject("ERROR", ex)
+            }
+        }
+    }
+
+    override fun onActivityResult(
+        activity: Activity,
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        if (requestCode == REQUEST_CHECK_SETTINGS) {
+            if (resultCode == Activity.RESULT_OK) {
+                promise?.resolve("enabled")
+            } else {
+                promise?.reject("CANCELLED", "User cancelled")
+            }
+            promise = null
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {}
+
+    companion object {
+        const val REQUEST_CHECK_SETTINGS = 999
+    }
+}
+
+
+// Enable package
+package com.cofilocapp.location
+
+import com.facebook.react.ReactPackage
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.uimanager.ViewManager
+import com.facebook.react.bridge.NativeModule
+
+class LocationEnablerPackage : ReactPackage {
+    override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
+        return listOf(LocationEnablerModule(reactContext))
+    }
+
+    override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
+        return emptyList()
+    }
+}
+
+
+
